@@ -1,0 +1,36 @@
+[  Producer (i: 0..10)::
+    *[ true -> k := random(0, 10);
+               Buffer(k) ! Where();
+               [ (b: 0..10) Buffer(b) ? Here() -> Buffer(b) ! Package(); random_wait; ]
+    ]
+||
+   Consumer (i: 0..10)::
+    *[ true -> k := random(0, 10);
+               Buffer(k) ! Package();
+               [ (b: 0..10) Buffer(b) ? Here() -> Buffer(b) ! Package(); random_wait; ]
+    ]
+||
+   Buffer (i: 0..10)::
+    current := 0;
+    size := 10;
+    *[ (p: 0..10) Producer(p) ? Where() -> [ current <  size -> Producer(p) ! Here(); 
+                                                                Producer(p) ? Package();
+                                                                current := current + 1;
+                                           | current >= size -> Buffer(i + 1 mod 10) ! p; ]
+
+    |  Buffer(i - 1 mod 10)   ? p       -> [ current <  size -> Producer(p) ! Here(); 
+                                                                Producer(p) ? Package();
+                                                                current := current + 1;
+                                           | current >= size -> Buffer(i + 1 mod 10) ! p; ]
+
+    |  (c: 0..10) Consumer(p) ? Where() -> [ current >  0    -> Consumer(c) ! Here(); 
+                                                                Consumer(c) ? Package();
+                                                                current := current - 1;
+                                           | current <= 0    -> Buffer(i - 1 mod 10) ! c; ]
+
+    |  Buffer(i + 1 mod 10)   ? c       -> [ current >  0    -> Consumer(c) ! Here(); 
+                                                                Consumer(c) ? Package();
+                                                                current := current - 1;
+                                           | current <= 0    -> Buffer(i - 1 mod 10) ! c; ]
+    ] 
+]
