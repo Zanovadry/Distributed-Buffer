@@ -5,18 +5,25 @@ import org.example.utilities.*;
 
 public class TimeoutBuffer implements CSProcess {
     final private Stats stats;
-    final private One2OneChannelInt[] producers;
-    final private One2OneChannelInt[] consumers;
+    final private One2OneChannelInt[] fromProducerChannels;
+    final private One2OneChannelInt[] toProducerChannels;
+    final private One2OneChannelInt[] fromConsumerChannels;
+    final private One2OneChannelInt[] toConsumerChannels;
     final private One2OneChannel<PassPayload> nextBuffer;
     final private One2OneChannel<PassPayload> prevBuffer;
     final private int bufferSize;
     final private int Id;
     private int current = 0; 
 
-    public TimeoutBuffer (One2OneChannelInt[] producers, One2OneChannelInt[] consumers, One2OneChannel<PassPayload> nextBuffer, One2OneChannel<PassPayload> prevBuffer, int bufferSize, Stats stats, int Id) {
+    public TimeoutBuffer (One2OneChannelInt[] fromProducerChannels, One2OneChannelInt[] toProducerChannels,
+                          One2OneChannelInt[] fromConsumerChannels, One2OneChannelInt[] toConsumerChannels, 
+                          One2OneChannel<PassPayload> nextBuffer, One2OneChannel<PassPayload> prevBuffer, 
+                          int bufferSize, Stats stats, int Id) {
         this.stats = stats;
-        this.producers = producers;
-        this.consumers = consumers;
+        this.fromProducerChannels = fromProducerChannels;
+        this.toProducerChannels = toProducerChannels;
+        this.fromConsumerChannels = fromConsumerChannels;
+        this.toConsumerChannels = toConsumerChannels;
         this.nextBuffer = nextBuffer;
         this.prevBuffer = prevBuffer;
         this.bufferSize = bufferSize;
@@ -24,12 +31,12 @@ public class TimeoutBuffer implements CSProcess {
     }
 
     public void run () {
-        Guard[] guards = new Guard[producers.length + consumers.length + 2];
-        for (int i = 0; i < producers.length; i++) {
-            guards[i] = producers[i].in();
+        Guard[] guards = new Guard[fromProducerChannels.length + fromConsumerChannels.length + 2];
+        for (int i = 0; i < fromProducerChannels.length; i++) {
+            guards[i] = fromProducerChannels[i].in();
         }
-        for (int i = 0; i < consumers.length; i++) {
-            guards[producers.length + i] = consumers[i].in();
+        for (int i = 0; i < fromConsumerChannels.length; i++) {
+            guards[fromProducerChannels.length + i] = fromConsumerChannels[i].in();
         }
         guards[guards.length - 2] = nextBuffer.in();
         guards[guards.length - 1] = prevBuffer.in();
@@ -38,38 +45,38 @@ public class TimeoutBuffer implements CSProcess {
 
         while (true) {
             int index = alt.select();
-            if (index < producers.length) {
-                System.out.println("Buffer " + Id + " selected producer " + index);
-                One2OneChannelInt producer = producers[index];
-                if (producer.in().read() == Payload.WHERE.ordinal()) {
+            if (index < fromProducerChannels.length) {
+                int producerIndex = index;
+                System.out.println("Buffer " + Id + " selected producer " + producerIndex);
+                if (fromProducerChannels[producerIndex].in().read() == Payload.WHERE.ordinal()) {
                     if (current < bufferSize) {
-                        producer.out().write(Payload.HERE.ordinal()); 
-                        if (producer.in().read() == Payload.PACKAGE.ordinal()) {
+                        toProducerChannels[producerIndex].out().write(Payload.HERE.ordinal()); 
+                        if (fromProducerChannels[producerIndex].in().read() == Payload.PACKAGE.ordinal()) {
                             current++;
-                            stats.recordProduced(index);
-                            System.out.println("Buffer " + Id + " received PACKAGE from producer " + index);
+                            stats.recordProduced(producerIndex);
+                            System.out.println("Buffer " + Id + " received PACKAGE from producer " + producerIndex);
                         }                      
                     } else {
-                        nextBuffer.out().write(new PassPayload(Id, index));
-                        stats.recordProducerPass(index); 
-                        System.out.println("Buffer " + Id + " passed producer " + index + " to next buffer");
+                        nextBuffer.out().write(new PassPayload(Id, producerIndex));
+                        stats.recordProducerPass(producerIndex); 
+                        System.out.println("Buffer " + Id + " passed producer " + producerIndex + " to next buffer");
                     }
                 }
 
-            } else if (index < producers.length + consumers.length) {
-                System.out.println("Buffer " + Id + " selected consumer " + (index - producers.length));
-                One2OneChannelInt consumer = consumers[index - producers.length];
-                if (consumer.in().read() == Payload.WHERE.ordinal()) {
+            } else if (index < fromProducerChannels.length + fromConsumerChannels.length) {
+                int consumerIndex = index - fromProducerChannels.length;
+                System.out.println("Buffer " + Id + " selected consumer " + consumerIndex);
+                if (fromConsumerChannels[consumerIndex].in().read() == Payload.WHERE.ordinal()) {
                     if (current > 0) {
-                        consumer.out().write(Payload.HERE.ordinal()); 
-                        consumer.out().write(Payload.PACKAGE.ordinal());
+                        toConsumerChannels[consumerIndex].out().write(Payload.HERE.ordinal()); 
+                        toConsumerChannels[consumerIndex].out().write(Payload.PACKAGE.ordinal());
                         current--;
-                        stats.recordConsumed(index - producers.length);  
-                        System.out.println("Buffer " + Id + " sent PACKAGE to consumer " + (index - producers.length));                
+                        stats.recordConsumed(consumerIndex);  
+                        System.out.println("Buffer " + Id + " sent PACKAGE to consumer " + consumerIndex);                
                     } else {
-                        prevBuffer.out().write(new PassPayload(Id, index - producers.length) );
-                        stats.recordConsumerPass(index - producers.length); 
-                        System.out.println("Buffer " + Id + " passed consumer " + (index - producers.length) + " to previous buffer");
+                        prevBuffer.out().write(new PassPayload(Id, consumerIndex));
+                        stats.recordConsumerPass(consumerIndex); 
+                        System.out.println("Buffer " + Id + " passed consumer " + consumerIndex + " to previous buffer");
                     }
                 }
 
@@ -80,8 +87,8 @@ public class TimeoutBuffer implements CSProcess {
                 int ogBufferIndex = passPayload.ogBufferIndex();
                 if (current < bufferSize) {
                     System.out.println("Buffer " + Id + " accepting passed producer " + producerIndex);
-                    producers[producerIndex].out().write(Payload.HERE.ordinal());
-                    if (producers[producerIndex].in().read() == Payload.PACKAGE.ordinal()) {
+                    toProducerChannels[producerIndex].out().write(Payload.HERE.ordinal());
+                    if (fromProducerChannels[producerIndex].in().read() == Payload.PACKAGE.ordinal()) {
                         current++;
                         stats.recordProduced(producerIndex);
                     }
@@ -91,7 +98,7 @@ public class TimeoutBuffer implements CSProcess {
                     stats.recordProducerPass(producerIndex);
                 } else {
                     System.out.println("Buffer " + Id + " telling producer " + producerIndex + " to WAIT");
-                    producers[producerIndex].out().write(Payload.WAIT.ordinal());
+                    toProducerChannels[producerIndex].out().write(Payload.WAIT.ordinal());
                 }
 
             } else if (index == guards.length - 2) {
@@ -101,8 +108,8 @@ public class TimeoutBuffer implements CSProcess {
                 int ogBufferIndex = passPayload.ogBufferIndex();
                 if (current > 0) {
                     System.out.println("Buffer " + Id + " accepting passed consumer " + consumerIndex);
-                    consumers[consumerIndex].out().write(Payload.HERE.ordinal());
-                    consumers[consumerIndex].out().write(Payload.PACKAGE.ordinal());
+                    toConsumerChannels[consumerIndex].out().write(Payload.HERE.ordinal());
+                    toConsumerChannels[consumerIndex].out().write(Payload.PACKAGE.ordinal());
                     current--;
                     stats.recordConsumed(consumerIndex);
                 } else  if (ogBufferIndex != Id) {
@@ -111,7 +118,7 @@ public class TimeoutBuffer implements CSProcess {
                     stats.recordConsumerPass(consumerIndex);
                 } else {
                     System.out.println("Buffer " + Id + " telling consumer " + consumerIndex + " to WAIT");
-                    consumers[consumerIndex].out().write(Payload.WAIT.ordinal());
+                    toConsumerChannels[consumerIndex].out().write(Payload.WAIT.ordinal());
                 }
             } else {
                 System.out.println("Buffer " + Id + " error: invalid index " + index + "selected");

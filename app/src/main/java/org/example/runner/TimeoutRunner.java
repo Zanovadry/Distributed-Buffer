@@ -14,46 +14,68 @@ public class TimeoutRunner {
             passBufferChannels[i] = Channel.one2one();
         }
 
-        One2OneChannelInt[][] producerChannels = new One2OneChannelInt[numProducers][numBuffers];
+        One2OneChannelInt[][] producerToBufferChannels = new One2OneChannelInt[numProducers][numBuffers];
+        One2OneChannelInt[][] producerFromBufferChannels = new One2OneChannelInt[numProducers][numBuffers];
         for (int p = 0; p < numProducers; p++) {
             for (int b = 0; b < numBuffers; b++) {
-                producerChannels[p][b] = Channel.one2oneInt();
+                producerToBufferChannels[p][b] = Channel.one2oneInt();
+                producerFromBufferChannels[p][b] = Channel.one2oneInt();
             }
         }
 
-        One2OneChannelInt[][] consumerChannels = new One2OneChannelInt[numConsumers][numBuffers];
+        One2OneChannelInt[][] consumerToBufferChannels = new One2OneChannelInt[numConsumers][numBuffers];
+        One2OneChannelInt[][] consumerFromBufferChannels = new One2OneChannelInt[numConsumers][numBuffers];
         for (int c = 0; c < numConsumers; c++) {
             for (int b = 0; b < numBuffers; b++) {
-                consumerChannels[c][b] = Channel.one2oneInt();
+                consumerToBufferChannels[c][b] = Channel.one2oneInt();
+                consumerFromBufferChannels[c][b] = Channel.one2oneInt();
             }
         }
 
         CSProcess[] processes = new CSProcess[numProducers + numConsumers + numBuffers];
 
         for (int i = 0; i < numProducers; i++) {
-            One2OneChannelInt[] channelsToBuffers = new One2OneChannelInt[numBuffers];
-            for (int b = 0; b < numBuffers; b++) channelsToBuffers[b] = producerChannels[i][b];
-            processes[i] = new TimeoutProducer(channelsToBuffers, i);
+            One2OneChannelInt[] ptbc = new One2OneChannelInt[numBuffers];
+            One2OneChannelInt[] pfbc = new One2OneChannelInt[numBuffers];
+            for (int b = 0; b < numBuffers; b++) {
+                ptbc[b] = producerToBufferChannels[i][b];
+                pfbc[b] = producerFromBufferChannels[i][b];
+            
+            }
+            processes[i] = new TimeoutProducer(ptbc, pfbc, i);
         }
 
         for (int i = 0; i < numConsumers; i++) {
-            One2OneChannelInt[] channelsToBuffers = new One2OneChannelInt[numBuffers];
-            for (int b = 0; b < numBuffers; b++) channelsToBuffers[b] = consumerChannels[i][b];
-            processes[numProducers + i] = new TimeoutConsumer(channelsToBuffers, i);
+            One2OneChannelInt[] ctbc = new One2OneChannelInt[numBuffers];
+            One2OneChannelInt[] cfbc = new One2OneChannelInt[numBuffers];
+            for (int b = 0; b < numBuffers; b++) {
+                ctbc[b] = consumerToBufferChannels[i][b];
+                cfbc[b] = consumerFromBufferChannels[i][b];
+            
+            }
+            processes[i + numProducers] = new TimeoutConsumer(ctbc, cfbc, i);
         }
-
         Stats[] stats = new Stats[numBuffers];
         for (int i = 0; i < numBuffers; i++) {
-            One2OneChannelInt[] producersForBuffer = new One2OneChannelInt[numProducers];
-            for (int p = 0; p < numProducers; p++) producersForBuffer[p] = producerChannels[p][i];
+            One2OneChannelInt[] fromProducerChannels = new One2OneChannelInt[numProducers];
+            One2OneChannelInt[] toProducerChannels = new One2OneChannelInt[numProducers];
+            
+            for (int p = 0; p < numProducers; p++) {
+                fromProducerChannels[p] = producerToBufferChannels[p][i];
+                toProducerChannels[p] = producerFromBufferChannels[p][i];
+            }
 
-            One2OneChannelInt[] consumersForBuffer = new One2OneChannelInt[numConsumers];
-            for (int c = 0; c < numConsumers; c++) consumersForBuffer[c] = consumerChannels[c][i];
-
+            One2OneChannelInt[] fromConsumerChannels = new One2OneChannelInt[numConsumers];
+            One2OneChannelInt[] toConsumerChannels = new One2OneChannelInt[numConsumers];
+            for (int c = 0; c < numConsumers; c++) {
+                fromConsumerChannels[c] = consumerToBufferChannels[c][i];
+                toConsumerChannels[c] = consumerFromBufferChannels[c][i];
+            }
+            
             One2OneChannel<PassPayload> nextBuffer = passBufferChannels[(i + 1) % numBuffers];
             One2OneChannel<PassPayload> prevBuffer = passBufferChannels[(i - 1 + numBuffers) % numBuffers];
             stats[i] = new Stats(numProducers, numConsumers);
-            processes[numProducers + numConsumers + i] = new TimeoutBuffer(producersForBuffer, consumersForBuffer, nextBuffer, prevBuffer, bufferSize, stats[i], i);
+            processes[numProducers + numConsumers + i] = new TimeoutBuffer(fromProducerChannels,  toProducerChannels, fromConsumerChannels, toConsumerChannels, nextBuffer, prevBuffer, bufferSize, stats[i], i);
         }
 
         Thread thread = new Thread(() -> {
