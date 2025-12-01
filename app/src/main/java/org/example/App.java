@@ -1,10 +1,10 @@
 package org.example;
 
-import org.example.runner.ExampleRunner;
+import org.example.runner.TimeoutRunner;
 
 public class App {
 
     public static void main(String[] args) {
-        new ExampleRunner().run();
+        new TimeoutRunner(1, 1, 3, 5);
     }
 }
