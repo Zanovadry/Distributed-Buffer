@@ -41,8 +41,8 @@ public class TimeoutProducer implements CSProcess {
                 try {
                     Thread.sleep(100 + rand.nextInt(400));
                 } catch (InterruptedException e) {
-                    //Thread.currentThread().interrupt();
-                    //break;
+                    Thread.currentThread().interrupt();
+                    break;
                 }
                 queryBufferIndex = rand.nextInt(toBufferChannels.length);
                 System.out.println("Producer " + Id + " querying buffer " + queryBufferIndex + " after WAIT...");
@@ -59,8 +59,8 @@ public class TimeoutProducer implements CSProcess {
                 try {
                     Thread.sleep(100 + rand.nextInt(400));
                 } catch (InterruptedException e) {
-                    //Thread.currentThread().interrupt();
-                    //break;
+                    Thread.currentThread().interrupt();
+                    break;
                 }
             }
         }        
