@@ -9,23 +9,28 @@ public class TimeoutBuffer implements CSProcess {
     final private One2OneChannelInt[] toProducerChannels;
     final private One2OneChannelInt[] fromConsumerChannels;
     final private One2OneChannelInt[] toConsumerChannels;
-    final private One2OneChannel<PassPayload> nextBuffer;
-    final private One2OneChannel<PassPayload> prevBuffer;
+    final private One2OneChannel<PassPayload> passProducerChannel;
+    final private One2OneChannel<PassPayload> receivePassedProducerChannel;
+    final private One2OneChannel<PassPayload> passConsumerChannel;
+    final private One2OneChannel<PassPayload> receivePassedConsumerChannel;
     final private int bufferSize;
     final private int Id;
     private int current = 0; 
 
     public TimeoutBuffer (One2OneChannelInt[] fromProducerChannels, One2OneChannelInt[] toProducerChannels,
                           One2OneChannelInt[] fromConsumerChannels, One2OneChannelInt[] toConsumerChannels, 
-                          One2OneChannel<PassPayload> nextBuffer, One2OneChannel<PassPayload> prevBuffer, 
+                          One2OneChannel<PassPayload> passProducerChannel, One2OneChannel<PassPayload> receivePassedProducerChannel,
+                          One2OneChannel<PassPayload> passConsumerChannel, One2OneChannel<PassPayload> receivePassedConsumerChannel, 
                           int bufferSize, Stats stats, int Id) {
         this.stats = stats;
         this.fromProducerChannels = fromProducerChannels;
         this.toProducerChannels = toProducerChannels;
         this.fromConsumerChannels = fromConsumerChannels;
         this.toConsumerChannels = toConsumerChannels;
-        this.nextBuffer = nextBuffer;
-        this.prevBuffer = prevBuffer;
+        this.passProducerChannel = passProducerChannel;
+        this.receivePassedProducerChannel = receivePassedProducerChannel;
+        this.passConsumerChannel = passConsumerChannel;
+        this.receivePassedConsumerChannel = receivePassedConsumerChannel;
         this.bufferSize = bufferSize;
         this.Id = Id;
     }
@@ -38,8 +43,8 @@ public class TimeoutBuffer implements CSProcess {
         for (int i = 0; i < fromConsumerChannels.length; i++) {
             guards[fromProducerChannels.length + i] = fromConsumerChannels[i].in();
         }
-        guards[guards.length - 2] = nextBuffer.in();
-        guards[guards.length - 1] = prevBuffer.in();
+        guards[guards.length - 2] = receivePassedProducerChannel.in();
+        guards[guards.length - 1] = receivePassedConsumerChannel.in();
 
         Alternative alt = new Alternative(guards);
 
@@ -57,7 +62,7 @@ public class TimeoutBuffer implements CSProcess {
                             System.out.println("Buffer " + Id + " received PACKAGE from producer " + producerIndex);
                         }                      
                     } else {
-                        nextBuffer.out().write(new PassPayload(Id, producerIndex));
+                        passProducerChannel.out().write(new PassPayload(Id, producerIndex));
                         stats.recordProducerPass(producerIndex); 
                         System.out.println("Buffer " + Id + " passed producer " + producerIndex + " to next buffer");
                     }
@@ -74,15 +79,15 @@ public class TimeoutBuffer implements CSProcess {
                         stats.recordConsumed(consumerIndex);  
                         System.out.println("Buffer " + Id + " sent PACKAGE to consumer " + consumerIndex);                
                     } else {
-                        prevBuffer.out().write(new PassPayload(Id, consumerIndex));
+                        passConsumerChannel.out().write(new PassPayload(Id, consumerIndex));
                         stats.recordConsumerPass(consumerIndex); 
                         System.out.println("Buffer " + Id + " passed consumer " + consumerIndex + " to previous buffer");
                     }
                 }
 
-            } else if (index == guards.length - 1) {
+            } else if (index == guards.length - 2) {
                 System.out.println("Buffer " + Id + " got producer from previous buffer");
-                PassPayload passPayload = prevBuffer.in().read();
+                PassPayload passPayload = receivePassedProducerChannel.in().read();
                 int producerIndex = passPayload.pcIndex();
                 int ogBufferIndex = passPayload.ogBufferIndex();
                 if (current < bufferSize) {
@@ -94,16 +99,16 @@ public class TimeoutBuffer implements CSProcess {
                     }
                 } else if (ogBufferIndex != Id) {
                     System.out.println("Buffer " + Id + " passing producer " + producerIndex + " to next buffer");
-                    nextBuffer.out().write(passPayload);
+                    passProducerChannel.out().write(passPayload);
                     stats.recordProducerPass(producerIndex);
                 } else {
                     System.out.println("Buffer " + Id + " telling producer " + producerIndex + " to WAIT");
                     toProducerChannels[producerIndex].out().write(Payload.WAIT.ordinal());
                 }
 
-            } else if (index == guards.length - 2) {
+            } else if (index == guards.length - 1) {
                 System.out.println("Buffer " + Id + " got consumer from next buffer");
-                PassPayload passPayload = nextBuffer.in().read();
+                PassPayload passPayload = receivePassedConsumerChannel.in().read();
                 int consumerIndex = passPayload.pcIndex();
                 int ogBufferIndex = passPayload.ogBufferIndex();
                 if (current > 0) {
@@ -114,7 +119,7 @@ public class TimeoutBuffer implements CSProcess {
                     stats.recordConsumed(consumerIndex);
                 } else  if (ogBufferIndex != Id) {
                     System.out.println("Buffer " + Id + " passing consumer " + consumerIndex + " to previous buffer");
-                    prevBuffer.out().write(passPayload);
+                    passConsumerChannel.out().write(passPayload);
                     stats.recordConsumerPass(consumerIndex);
                 } else {
                     System.out.println("Buffer " + Id + " telling consumer " + consumerIndex + " to WAIT");

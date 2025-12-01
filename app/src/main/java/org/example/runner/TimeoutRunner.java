@@ -9,9 +9,11 @@ import org.example.utilities.*;
 public class TimeoutRunner {
 
     public TimeoutRunner(int numProducers, int numConsumers, int numBuffers, int bufferSize) {
-        One2OneChannel<PassPayload>[] passBufferChannels = (One2OneChannel<PassPayload>[]) new One2OneChannel[numBuffers];
+        One2OneChannel<PassPayload>[] passProducerChannels = (One2OneChannel<PassPayload>[]) new One2OneChannel[numBuffers];
+        One2OneChannel<PassPayload>[] passConsumerChannels = (One2OneChannel<PassPayload>[]) new One2OneChannel[numBuffers];
         for (int i = 0; i < numBuffers; i++) {
-            passBufferChannels[i] = Channel.one2one();
+            passProducerChannels[i] = Channel.one2one();
+            passConsumerChannels[i] = Channel.one2one();
         }
 
         One2OneChannelInt[][] producerToBufferChannels = new One2OneChannelInt[numProducers][numBuffers];
@@ -72,10 +74,13 @@ public class TimeoutRunner {
                 toConsumerChannels[c] = consumerFromBufferChannels[c][i];
             }
             
-            One2OneChannel<PassPayload> nextBuffer = passBufferChannels[(i + 1) % numBuffers];
-            One2OneChannel<PassPayload> prevBuffer = passBufferChannels[(i - 1 + numBuffers) % numBuffers];
+            One2OneChannel<PassPayload> passProducerChannel = passProducerChannels[i];
+            One2OneChannel<PassPayload> receivePassedProducerChannel = passProducerChannels[(i - 1 + numBuffers) % numBuffers];
+            One2OneChannel<PassPayload> passConsumerChannel = passConsumerChannels[i];
+            One2OneChannel<PassPayload> receivePassedConsumerChannel = passConsumerChannels[(i + 1) % numBuffers];
+
             stats[i] = new Stats(numProducers, numConsumers);
-            processes[numProducers + numConsumers + i] = new TimeoutBuffer(fromProducerChannels,  toProducerChannels, fromConsumerChannels, toConsumerChannels, nextBuffer, prevBuffer, bufferSize, stats[i], i);
+            processes[numProducers + numConsumers + i] = new TimeoutBuffer(fromProducerChannels,  toProducerChannels, fromConsumerChannels, toConsumerChannels, passProducerChannel, receivePassedProducerChannel, passConsumerChannel, receivePassedConsumerChannel, bufferSize, stats[i], i);
         }
 
         Thread thread = new Thread(() -> {
