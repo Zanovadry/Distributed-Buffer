@@ -26,20 +26,20 @@ public class QueueConsumer implements CSProcess {
 
         while (true) {
             int queryBufferIndex = rand.nextInt(toBufferChannels.length);
-            System.out.println("Consumer " + Id + " querying buffer " + queryBufferIndex + "...");
+            //System.out.println("Consumer " + Id + " querying buffer " + queryBufferIndex + "...");
             toBufferChannels[queryBufferIndex].out().write(Payload.WHERE.ordinal());
-            System.out.println("Consumer " + Id + " sent WHERE to buffer " + queryBufferIndex + ".");
+            //System.out.println("Consumer " + Id + " sent WHERE to buffer " + queryBufferIndex + ".");
 
             int selectedBufferIndex = alt.select();
 
             int response = fromBufferChannels[selectedBufferIndex].in().read();
 
-            System.out.println("Consumer " + Id + " received response from buffer " + selectedBufferIndex + ".");
+            //System.out.println("Consumer " + Id + " received response from buffer " + selectedBufferIndex + ".");
 
             if (response == Payload.HERE.ordinal()) {
-                System.out.println("Consumer " + Id + " got HERE.");
+                //System.out.println("Consumer " + Id + " got HERE.");
                 if (fromBufferChannels[selectedBufferIndex].in().read() == Payload.PACKAGE.ordinal()) {
-                    System.out.println("Consumer " + Id + " received PACKAGE.");
+                    //System.out.println("Consumer " + Id + " received PACKAGE.");
                     try {
                         Thread.sleep(100 + rand.nextInt(400));
                     } catch (InterruptedException e) {

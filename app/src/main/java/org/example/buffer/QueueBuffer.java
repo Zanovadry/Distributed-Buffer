@@ -18,7 +18,7 @@ public class QueueBuffer implements CSProcess {
     final private One2OneChannel<PassPayload> receivePassedConsumerChannel;
     final private int bufferSize;
     final private int Id;
-    private int current = 0; 
+    private int current; 
 
     public QueueBuffer (One2OneChannelInt[] fromProducerChannels, One2OneChannelInt[] toProducerChannels,
                           One2OneChannelInt[] fromConsumerChannels, One2OneChannelInt[] toConsumerChannels, 
@@ -36,6 +36,7 @@ public class QueueBuffer implements CSProcess {
         this.receivePassedConsumerChannel = receivePassedConsumerChannel;
         this.bufferSize = bufferSize;
         this.Id = Id;
+        this.current = bufferSize / 2;
     }
 
     public void run () {
@@ -58,119 +59,119 @@ public class QueueBuffer implements CSProcess {
             int index = alt.select();
             if (index < fromProducerChannels.length) {
                 int producerIndex = index;
-                System.out.println("Buffer " + Id + " selected producer " + producerIndex);
+                //System.out.println("Buffer " + Id + " selected producer " + producerIndex);
                 if (fromProducerChannels[producerIndex].in().read() == Payload.WHERE.ordinal()) {
                     if (current < bufferSize) {
                         toProducerChannels[producerIndex].out().write(Payload.HERE.ordinal()); 
                         if (fromProducerChannels[producerIndex].in().read() == Payload.PACKAGE.ordinal()) {
                             current++;
                             stats.recordProduced(producerIndex);
-                            System.out.println("Buffer " + Id + " received PACKAGE from producer " + producerIndex);
+                            //System.out.println("Buffer " + Id + " received PACKAGE from producer " + producerIndex);
                             if (!consumerQueue.isEmpty()) {
                                 int queuedConsumerIndex = consumerQueue.removeFirst();
-                                System.out.println("Buffer " + Id + " servicing queued consumer " + queuedConsumerIndex);
+                                //System.out.println("Buffer " + Id + " servicing queued consumer " + queuedConsumerIndex);
                                 toConsumerChannels[queuedConsumerIndex].out().write(Payload.HERE.ordinal());
                                 toConsumerChannels[queuedConsumerIndex].out().write(Payload.PACKAGE.ordinal());
                                 current--;
                                 stats.recordConsumed(queuedConsumerIndex);
-                                System.out.println("Buffer " + Id + " sent PACKAGE to consumer " + queuedConsumerIndex);
+                                //System.out.println("Buffer " + Id + " sent PACKAGE to consumer " + queuedConsumerIndex);
                             }
                         }                      
                     } else {
                         passProducerChannel.out().write(new PassPayload(Id, producerIndex));
                         stats.recordProducerPass(producerIndex); 
-                        System.out.println("Buffer " + Id + " passed producer " + producerIndex + " to next buffer");
+                        //System.out.println("Buffer " + Id + " passed producer " + producerIndex + " to next buffer");
                     }
                 }
 
             } else if (index < fromProducerChannels.length + fromConsumerChannels.length) {
                 int consumerIndex = index - fromProducerChannels.length;
-                System.out.println("Buffer " + Id + " selected consumer " + consumerIndex);
+                //System.out.println("Buffer " + Id + " selected consumer " + consumerIndex);
                 if (fromConsumerChannels[consumerIndex].in().read() == Payload.WHERE.ordinal()) {
                     if (current > 0) {
                         toConsumerChannels[consumerIndex].out().write(Payload.HERE.ordinal()); 
                         toConsumerChannels[consumerIndex].out().write(Payload.PACKAGE.ordinal());
                         current--;
                         stats.recordConsumed(consumerIndex);  
-                        System.out.println("Buffer " + Id + " sent PACKAGE to consumer " + consumerIndex);
+                        //System.out.println("Buffer " + Id + " sent PACKAGE to consumer " + consumerIndex);
                         if (!producerQueue.isEmpty()) {
                             int queuedProducerIndex = producerQueue.removeFirst();
-                            System.out.println("Buffer " + Id + " servicing queued producer " + queuedProducerIndex);
+                            //System.out.println("Buffer " + Id + " servicing queued producer " + queuedProducerIndex);
                             toProducerChannels[queuedProducerIndex].out().write(Payload.HERE.ordinal());
                             if (fromProducerChannels[queuedProducerIndex].in().read() == Payload.PACKAGE.ordinal()) {
                                 current++;
                                 stats.recordProduced(queuedProducerIndex);
-                                System.out.println("Buffer " + Id + " received PACKAGE from producer " + queuedProducerIndex);
+                                //System.out.println("Buffer " + Id + " received PACKAGE from producer " + queuedProducerIndex);
                             }
                         }          
                     } else {
                         passConsumerChannel.out().write(new PassPayload(Id, consumerIndex));
                         stats.recordConsumerPass(consumerIndex); 
-                        System.out.println("Buffer " + Id + " passed consumer " + consumerIndex + " to previous buffer");
+                        //System.out.println("Buffer " + Id + " passed consumer " + consumerIndex + " to previous buffer");
                     }
                 }
 
             } else if (index == guards.length - 2) {
-                System.out.println("Buffer " + Id + " got producer from previous buffer");
+                //System.out.println("Buffer " + Id + " got producer from previous buffer");
                 PassPayload passPayload = receivePassedProducerChannel.in().read();
                 int producerIndex = passPayload.pcIndex();
                 int ogBufferIndex = passPayload.ogBufferIndex();
                 if (current < bufferSize) {
-                    System.out.println("Buffer " + Id + " accepting passed producer " + producerIndex);
+                    //System.out.println("Buffer " + Id + " accepting passed producer " + producerIndex);
                     toProducerChannels[producerIndex].out().write(Payload.HERE.ordinal());
                     if (fromProducerChannels[producerIndex].in().read() == Payload.PACKAGE.ordinal()) {
                         current++;
                         stats.recordProduced(producerIndex);
                         if (!consumerQueue.isEmpty()) {
                             int queuedConsumerIndex = consumerQueue.removeFirst();
-                            System.out.println("Buffer " + Id + " servicing queued consumer " + queuedConsumerIndex);
+                            //System.out.println("Buffer " + Id + " servicing queued consumer " + queuedConsumerIndex);
                             toConsumerChannels[queuedConsumerIndex].out().write(Payload.HERE.ordinal());
                             toConsumerChannels[queuedConsumerIndex].out().write(Payload.PACKAGE.ordinal());
                             current--;
                             stats.recordConsumed(queuedConsumerIndex);
-                            System.out.println("Buffer " + Id + " sent PACKAGE to consumer " + queuedConsumerIndex);
+                            //System.out.println("Buffer " + Id + " sent PACKAGE to consumer " + queuedConsumerIndex);
                         }
                     }
                 } else if (ogBufferIndex != Id) {
-                    System.out.println("Buffer " + Id + " passing producer " + producerIndex + " to next buffer");
+                    //System.out.println("Buffer " + Id + " passing producer " + producerIndex + " to next buffer");
                     passProducerChannel.out().write(passPayload);
                     stats.recordProducerPass(producerIndex);
                 } else {
-                    System.out.println("Buffer " + Id + " adding producer " + producerIndex + " to queue");
+                    //System.out.println("Buffer " + Id + " adding producer " + producerIndex + " to queue");
                     producerQueue.addLast(producerIndex);
                 }
 
             } else if (index == guards.length - 1) {
-                System.out.println("Buffer " + Id + " got consumer from next buffer");
+                //System.out.println("Buffer " + Id + " got consumer from next buffer");
                 PassPayload passPayload = receivePassedConsumerChannel.in().read();
                 int consumerIndex = passPayload.pcIndex();
                 int ogBufferIndex = passPayload.ogBufferIndex();
                 if (current > 0) {
-                    System.out.println("Buffer " + Id + " accepting passed consumer " + consumerIndex);
+                    //System.out.println("Buffer " + Id + " accepting passed consumer " + consumerIndex);
                     toConsumerChannels[consumerIndex].out().write(Payload.HERE.ordinal());
                     toConsumerChannels[consumerIndex].out().write(Payload.PACKAGE.ordinal());
                     current--;
                     stats.recordConsumed(consumerIndex);
                     if (!producerQueue.isEmpty()) {
                         int queuedProducerIndex = producerQueue.removeFirst();
-                        System.out.println("Buffer " + Id + " servicing queued producer " + queuedProducerIndex);
+                        //System.out.println("Buffer " + Id + " servicing queued producer " + queuedProducerIndex);
                         toProducerChannels[queuedProducerIndex].out().write(Payload.HERE.ordinal());
                         if (fromProducerChannels[queuedProducerIndex].in().read() == Payload.PACKAGE.ordinal()) {
                             current++;
                             stats.recordProduced(queuedProducerIndex);
-                            System.out.println("Buffer " + Id + " received PACKAGE from producer " + queuedProducerIndex);
+                            //System.out.println("Buffer " + Id + " received PACKAGE from producer " + queuedProducerIndex);
                         }
                     }
                 } else  if (ogBufferIndex != Id) {
-                    System.out.println("Buffer " + Id + " passing consumer " + consumerIndex + " to previous buffer");
+                    //System.out.println("Buffer " + Id + " passing consumer " + consumerIndex + " to previous buffer");
                     passConsumerChannel.out().write(passPayload);
                     stats.recordConsumerPass(consumerIndex);
                 } else {
-                    System.out.println("Buffer " + Id + " adding consumer " + consumerIndex + " to queue");
+                    //System.out.println("Buffer " + Id + " adding consumer " + consumerIndex + " to queue");
                     consumerQueue.addLast(consumerIndex);
                 }
             } else {
-                System.out.println("Buffer " + Id + " error: invalid index " + index + "selected");
+                //System.out.println("Buffer " + Id + " error: invalid index " + index + "selected");
             }
         }
     }
